@@ -1,0 +1,26 @@
+#fastapi==0.95.2
+#uvicorn==0.22.0
+#python-multipart==0.0.6
+#numpy==1.24.4
+#opencv-python==4.8.1.78
+#ultralytics==8.0.196
+#yping-extensions==4.8.0  # Necesario para evitar conflictos con Python 3.8
+
+#astapi==0.95.2
+#vicorn==0.22.0
+#umpy==1.24.4
+#pencv-python-headless==4.8.1.78
+#orch==2.0.1
+#ltralytics==8.0.196
+#matplotlib==3.7.1
+#ython-multipart==0.0.6
+
+
+
+fastapi
+ultralytics
+numpy
+matplotlib
+uvicorn
+opencv-python-headless
+python-multipart
