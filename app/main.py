@@ -13,13 +13,14 @@ import os
 from roya import procesar_lote
 from typing import List
 import base64
+import glob
 
 app = FastAPI()
 
 # Configuración avanzada de CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://trabajo-de-grado-c13a2.web.app", "https://d0a0-190-107-19-227.ngrok-free.app", "*"],
+    allow_origins=["http://localhost:5173/", "https://trabajo-de-grado-c13a2.web.app", "https://d0a0-190-107-19-227.ngrok-free.app", "*"],
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
@@ -322,5 +323,93 @@ async def process_multiple_images(files: List[UploadFile] = File(...)):
         logger.error(f"Error general en process_multiple_images: {str(e)}", exc_info=True)
         return JSONResponse(
             content={"status": "error", "message": str(e)},
+            status_code=500
+        )
+
+
+# ------------------------------------------------------------------
+
+
+@app.delete("/clear-all-files")
+def clear_all_files():
+    """
+    Endpoint para eliminar todos los archivos de las carpetas:
+    - imagenes/
+    - labels/
+    - resultados/
+    - resultados/por/
+    """
+    try:
+        carpetas_a_limpiar = [
+            "imagenes",
+            "labels", 
+            "resultados",
+            os.path.join("resultados", "por")
+        ]
+        
+        archivos_eliminados = []
+        errores = []
+        
+        for carpeta in carpetas_a_limpiar:
+            try:
+                # Verificar si la carpeta existe
+                if not os.path.exists(carpeta):
+                    logger.warning(f"📁 La carpeta {carpeta} no existe")
+                    continue
+                
+                # Obtener todos los archivos en la carpeta
+                patron = os.path.join(carpeta, "*")
+                archivos = glob.glob(patron)
+                
+                # Filtrar solo archivos (no carpetas)
+                archivos = [f for f in archivos if os.path.isfile(f)]
+                
+                logger.info(f"🗑️ Eliminando {len(archivos)} archivos de {carpeta}")
+                
+                for archivo in archivos:
+                    try:
+                        os.remove(archivo)
+                        archivos_eliminados.append(archivo)
+                        logger.info(f"✅ Eliminado: {archivo}")
+                    except Exception as e:
+                        error_msg = f"Error eliminando {archivo}: {str(e)}"
+                        errores.append(error_msg)
+                        logger.error(f"❌ {error_msg}")
+                        
+            except Exception as e:
+                error_msg = f"Error procesando carpeta {carpeta}: {str(e)}"
+                errores.append(error_msg)
+                logger.error(f"❌ {error_msg}")
+        
+        # Preparar respuesta
+        respuesta = {
+            "status": "success",
+            "mensaje": f"Proceso completado. {len(archivos_eliminados)} archivos eliminados.",
+            "archivos_eliminados": len(archivos_eliminados),
+            "detalles": {
+                "archivos_eliminados": archivos_eliminados,
+                "errores": errores
+            }
+        }
+        
+        if errores:
+            respuesta["status"] = "partial_success"
+            respuesta["mensaje"] += f" {len(errores)} errores encontrados."
+            
+        logger.info(f"🧹 Limpieza completada: {len(archivos_eliminados)} archivos eliminados, {len(errores)} errores")
+        
+        return JSONResponse(
+            content=respuesta,
+            status_code=200
+        )
+        
+    except Exception as e:
+        logger.error(f"🔥 Error crítico en clear_all_files: {str(e)}", exc_info=True)
+        return JSONResponse(
+            content={
+                "status": "error",
+                "mensaje": "Error interno al limpiar archivos",
+                "error": str(e)
+            },
             status_code=500
         )
