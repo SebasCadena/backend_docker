@@ -19,7 +19,7 @@ app = FastAPI()
 # Configuración avanzada de CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://trabajo-de-grado-c13a2.web.app", "https://dc1c-18-119-105-227.ngrok-free.app", "*"],
+    allow_origins=["https://trabajo-de-grado-c13a2.web.app", "https://d0a0-190-107-19-227.ngrok-free.app", "*"],
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
