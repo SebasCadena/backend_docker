@@ -42,6 +42,45 @@ def crear_mascara_desde_txt(txt_path,   img_shape):
     return mask
 
 
+def analizar_roya_simple(imagen_np, mask_hoja):
+    """
+    Versión simplificada de análisis de roya que trabaja con arrays numpy
+    y devuelve solo el porcentaje sin guardar archivos
+    """
+    try:
+        # Verificar que la máscara no esté vacía
+        if np.sum(mask_hoja) == 0:
+            return {"error": "Máscara vacía - No se detectó hoja"}
+
+        # Aislar la hoja
+        hoja_aislada = cv2.bitwise_and(imagen_np, imagen_np, mask=mask_hoja)
+
+        # Convertir a HSV para detección de color
+        hsv = cv2.cvtColor(hoja_aislada, cv2.COLOR_BGR2HSV)
+
+        # Rangos para tonalidades de roya (ajustables)
+        lower_roya = np.array([15, 50, 50])  # Amarillo claro
+        upper_roya = np.array([30, 255, 255])  # Amarillo oscuro/café
+
+        # Detectar roya SOLO dentro de la hoja
+        mask_roya = cv2.inRange(hsv, lower_roya, upper_roya)
+        mask_roya = cv2.bitwise_and(mask_roya, mask_hoja)
+
+        # Cálculo de áreas
+        area_total = cv2.countNonZero(mask_hoja)
+        area_roya = cv2.countNonZero(mask_roya)
+        porcentaje = (area_roya / area_total) * 100 if area_total > 0 else 0.0
+
+        return {
+            'porcentaje_roya': round(porcentaje, 2),
+            'area_total': int(area_total),
+            'area_roya': int(area_roya)
+        }
+
+    except Exception as e:
+        return {"error": f"Error en análisis colorimétrico: {str(e)}"}
+
+
 def analizar_roya(img_path, txt_path):
     try:
         # 1. Cargar imagen

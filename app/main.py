@@ -10,7 +10,7 @@ import torch
 from typing import Optional
 from fastapi import Form
 import os
-from roya import procesar_lote
+from roya import procesar_lote, analizar_roya_simple
 from typing import List
 import base64
 import glob
@@ -413,3 +413,117 @@ def clear_all_files():
             },
             status_code=500
         )
+
+
+# ------------------------------------------------------------------
+
+
+@app.post("/analyze-image")
+async def analyze_image(file: UploadFile = File(...)):
+    """
+    Endpoint que recibe una imagen, hace segmentación YOLO y análisis colorimétrico
+    para devolver únicamente el porcentaje de roya detectado
+    """
+    try:
+        logger.info(f"📥 Analizando roya en archivo: {file.filename}")
+        
+        # Verificación básica del archivo
+        if not file.content_type.startswith('image/'):
+            raise HTTPException(400, "Solo se permiten imágenes")
+
+        contents = await file.read()
+        logger.info(f"📏 Tamaño de imagen recibida: {len(contents) / 1024:.2f} KB")
+
+        # Decodificación de la imagen
+        nparr = np.frombuffer(contents, np.uint8)
+        imagen = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        if imagen is None:
+            logger.error("⚠️ No se pudo decodificar la imagen")
+            raise HTTPException(400, "Formato de imagen no soportado")
+
+        logger.info(f"🖼️ Dimensión de imagen: {imagen.shape}")
+
+        # Paso 1: Segmentación con YOLO
+        logger.info("🔍 Ejecutando segmentación YOLO...")
+        resultados_yolo = modelo.predict(
+            imagen,
+            imgsz=640,
+            conf=0.4,
+            device="cpu"
+        )
+        logger.info("🎯 Segmentación completada")
+
+        # Verificar si se detectaron máscaras
+        if not hasattr(resultados_yolo[0], "masks") or resultados_yolo[0].masks is None:
+            logger.warning("⚠️ No se detectaron hojas en la imagen")
+            return JSONResponse(
+                content={
+                    "status": "no_detection",
+                    "mensaje": "No se detectaron hojas en la imagen",
+                    "porcentaje_roya": 0.0
+                },
+                status_code=200
+            )
+
+        mascaras = resultados_yolo[0].masks.data.cpu().numpy()
+        logger.info(f"🔄 Procesando {len(mascaras)} máscaras detectadas...")
+
+        # Obtener la máscara más grande (hoja principal)
+        mascara_mas_grande = max(
+            ((m * 255).astype("uint8") for m in mascaras),
+            key=lambda m: cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[0][0].size,
+            default=None
+        )
+
+        if mascara_mas_grande is None:
+            logger.warning("⚠️ No se pudo procesar la máscara de segmentación")
+            return JSONResponse(
+                content={
+                    "status": "error",
+                    "mensaje": "No se pudo procesar la segmentación de la hoja",
+                    "porcentaje_roya": 0.0
+                },
+                status_code=400
+            )
+
+        # Redimensionar la máscara al tamaño de la imagen original
+        mascara_rsz = cv2.resize(mascara_mas_grande, (imagen.shape[1], imagen.shape[0]))
+
+        # Paso 2: Análisis colorimétrico de roya
+        logger.info("🎨 Ejecutando análisis colorimétrico...")
+        resultado_roya = analizar_roya_simple(imagen, mascara_rsz)
+
+        if "error" in resultado_roya:
+            logger.error(f"❌ Error en análisis: {resultado_roya['error']}")
+            return JSONResponse(
+                content={
+                    "status": "error",
+                    "mensaje": resultado_roya["error"],
+                    "porcentaje_roya": 0.0
+                },
+                status_code=400
+            )
+
+        logger.info(f"✅ Análisis completado: {resultado_roya['porcentaje_roya']}% de roya detectada")
+
+        # Respuesta exitosa
+        return JSONResponse(
+            content={
+                "status": "success",
+                "mensaje": "Análisis de roya completado exitosamente",
+                "porcentaje_roya": resultado_roya['porcentaje_roya'],
+                "detalles": {
+                    "area_total_pixeles": resultado_roya['area_total'],
+                    "area_roya_pixeles": resultado_roya['area_roya'],
+                    "archivo_procesado": file.filename
+                }
+            },
+            status_code=200
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"🔥 Error crítico en analyze_rust_percentage: {str(e)}", exc_info=True)
+        raise HTTPException(500, f"Error interno analizando la imagen: {str(e)}") from e
